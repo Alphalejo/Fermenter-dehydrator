@@ -3,20 +3,24 @@
 
 #include <Arduino.h>
 
-// Pines del encoder
 #define ENCODER_CLK 14
 #define ENCODER_DT  15
 #define ENCODER_SW  13
+#define BTN_SELECT  26
+#define BTN_MODE    25  
 
-// Pines de los nuevos pulsadores
-#define BTN_SELECT  26 
-#define BTN_EXTRA   25 
-
-// Variables compartidas
 extern volatile bool inMenu;
-extern volatile bool alarmaActivada; // Nuevo estado de alarma
+extern volatile bool ActivatedAlarm;
 
-// Declaración de las funciones
+// Variables de los modos
+extern volatile int currentModeIndex; 
+extern volatile float currentTargetTemp;
+extern volatile float currentTargetHum;
+
+// NUEVO: Variables para el temporizador y estado del sistema
+extern volatile bool systemRunning; 
+extern volatile unsigned long remainingSeconds;
+
 void setupEncoder();
 void drawMenuScreen();
 void processEncoder();
