@@ -9,20 +9,29 @@
 #define BTN_SELECT  26
 #define BTN_MODE    25  
 
+// Variables globales de la interfaz (Personalización futura)
+extern uint16_t colorUI_Text;
+extern uint16_t colorUI_Active;
+extern uint16_t colorUI_Inactive;
+
 extern volatile bool inMenu;
 extern volatile bool ActivatedAlarm;
 
-// Variables de los modos
 extern volatile int currentModeIndex; 
 extern volatile float currentTargetTemp;
 extern volatile float currentTargetHum;
 
-// NUEVO: Variables para el temporizador y estado del sistema
 extern volatile bool systemRunning; 
 extern volatile unsigned long remainingSeconds;
 
+// Variables para el menú de seguridad (Overlay)
+extern volatile bool modeWarningActive;
+extern volatile int warningSelection; // 0 = Cancelar, 1 = Cambiar
+
 void setupEncoder();
 void drawMenuScreen();
+void drawWarningOverlay(); // Nueva función de dibujo
+void redrawFullDashboard(); // Helper para refrescar todo
 void processEncoder();
 
 #endif

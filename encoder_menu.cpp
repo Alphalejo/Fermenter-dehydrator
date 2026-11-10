@@ -5,22 +5,29 @@
 #include <Adafruit_ST7789.h>
 
 extern Adafruit_ST7789 tft;
+extern void updateFastValues(); 
+extern void drawModeAndAlarm();
+
+// Colores de la interfaz
+uint16_t colorUI_Text = 0xFFFF;    // Blanco
+uint16_t colorUI_Active = 0x07E0;  // Verde
+uint16_t colorUI_Inactive = 0xF800;// Rojo
 
 volatile bool inMenu = false;
 volatile bool ActivatedAlarm = false;
+volatile bool modeWarningActive = false;
+volatile int warningSelection = 0; // 0 = Cancelar, 1 = Cambiar
 
 volatile int currentModeIndex = 0; 
 volatile float currentTargetTemp = 20.0;
 volatile float currentTargetHum = 60.0;
 
-// Estado del sistema y temporizador
 volatile bool systemRunning = false; 
 volatile unsigned long remainingSeconds = 0;
 
-// Configuración de los 5 modos: Temp, Hum, y Tiempo en segundos (Ej: 4h = 14400s)
 const float targetTemps[5] = {20.0, 22.0, 25.0, 28.0, 45.0};
 const float targetHums[5]  = {60.0, 65.0, 70.0, 75.0, 30.0};
-const unsigned long targetTimes[5] = {14400, 7200, 10800, 14400, 43200}; // 4h, 2h, 3h, 4h, 12h
+const unsigned long targetTimes[5] = {14400, 7200, 10800, 14400, 43200}; 
 
 int selectedOption = 0;
 const int NUM_OPTIONS = 4;
@@ -36,7 +43,7 @@ int lastClk = HIGH;
 unsigned long lastEncoderBtnTime = 0;
 unsigned long lastSelectBtnTime = 0;
 unsigned long lastModeBtnTime = 0; 
-unsigned long lastTimerTick = 0; // NUEVO: Para el contador regresivo
+unsigned long lastTimerTick = 0; 
 
 void setupEncoder() {
   pinMode(ENCODER_CLK, INPUT_PULLUP);
@@ -48,14 +55,65 @@ void setupEncoder() {
 
   currentTargetTemp = targetTemps[currentModeIndex];
   currentTargetHum = targetHums[currentModeIndex];
-  remainingSeconds = targetTimes[currentModeIndex]; // Cargar tiempo inicial
+  remainingSeconds = targetTimes[currentModeIndex]; 
+}
+
+void advanceMode() {
+  currentModeIndex++;
+  if (currentModeIndex > 4) currentModeIndex = 0;
+  currentTargetTemp = targetTemps[currentModeIndex];
+  currentTargetHum = targetHums[currentModeIndex];
+  remainingSeconds = targetTimes[currentModeIndex];
+}
+
+void redrawFullDashboard() {
+  drawStaticBase();
+  drawModeAndAlarm();
+  updateFastValues();
+}
+
+void drawWarningOverlay() {
+  displayLock();
+
+  tft.fillRect(20, 60, 200, 130, 0x2124); // Fondo gris oscuro
+  tft.drawRect(20, 60, 200, 130, colorUI_Text); // Borde
+  
+  tft.setFont(nullptr);
+  tft.setTextSize(1);
+  tft.setTextColor(colorUI_Text);
+  tft.setCursor(30, 75);
+  tft.print("Si cambias de modo se");
+  tft.setCursor(30, 90);
+  tft.print("reiniciara la cuenta.");
+
+  // Botón Cancelar (Rojo)
+  tft.fillRect(35, 130, 70, 40, colorUI_Inactive);
+  tft.setCursor(45, 145);
+  tft.setTextColor(colorUI_Text);
+  tft.print("Cancelar");
+
+  // Botón Cambiar (Verde)
+  tft.fillRect(135, 130, 70, 40, colorUI_Active);
+  tft.setCursor(150, 145);
+  tft.print("Cambiar");
+
+  // Cuadro de selección (resaltador blanco)
+  if (warningSelection == 0) {
+    tft.drawRect(33, 128, 74, 44, colorUI_Text);
+    tft.drawRect(133, 128, 74, 44, 0x2124); // Borrar el otro borde
+  } else {
+    tft.drawRect(33, 128, 74, 44, 0x2124);
+    tft.drawRect(133, 128, 74, 44, colorUI_Text);
+  }
+  displayUnlock();
 }
 
 void drawMenuScreen() {
+  displayLock();
   tft.fillScreen(0x0000); 
   tft.setFont(nullptr); 
   tft.setTextSize(2);
-  tft.setTextColor(0xFFFF); 
+  tft.setTextColor(colorUI_Text); 
   tft.setCursor(20, 20);
   tft.println("--- MENU PRINCIPAL ---");
 
@@ -65,12 +123,12 @@ void drawMenuScreen() {
     int yPos = 80 + (i * 40); 
     
     if (i == selectedOption) {
-      tft.fillRect(10, yPos - 20, 300, 30, 0x07E0); 
+      tft.fillRect(10, yPos - 20, 300, 30, colorUI_Active); 
       tft.setTextColor(0x0000); 
       tft.setCursor(20, yPos);
       tft.print("> ");
     } else {
-      tft.setTextColor(0xFFFF); 
+      tft.setTextColor(colorUI_Text); 
       tft.setCursor(20, yPos);
       tft.print("   ");
     }
@@ -82,22 +140,51 @@ void drawMenuScreen() {
       tft.print(menuOptions[i]);
     }
   }
+  displayUnlock();
 }
 
 void processEncoder() {
-  // --- NUEVO: Lógica del contador regresivo ---
+  // EL TEMPORIZADOR NUNCA SE DETIENE (incluso en menús)
   if (systemRunning) {
     if (millis() - lastTimerTick >= 1000) {
       lastTimerTick = millis();
       if (remainingSeconds > 0) {
         remainingSeconds--;
       } else {
-        systemRunning = false; // El tiempo terminó, apagar actuadores
+        systemRunning = false; 
       }
     }
   }
 
-  // 1. Botón del Encoder (Abrir/Cerrar menú)
+  // --- NAVEGACIÓN OVERLAY DE ADVERTENCIA ---
+  if (modeWarningActive) {
+    int currentClk = digitalRead(ENCODER_CLK);
+    if (currentClk != lastClk && currentClk == LOW) {
+      warningSelection = !warningSelection; // Alterna 0 y 1
+      drawWarningOverlay();
+    }
+    lastClk = currentClk;
+
+    if (digitalRead(BTN_SELECT) == LOW) {
+      if (millis() - lastSelectBtnTime > 300) {
+        if (warningSelection == 0) {
+          // Cancelar
+          modeWarningActive = false;
+          redrawFullDashboard();
+        } else {
+          // Cambiar
+          modeWarningActive = false;
+          systemRunning = false;
+          advanceMode();
+          redrawFullDashboard();
+        }
+        lastSelectBtnTime = millis();
+      }
+    }
+    return; // Sale de la función, bloquea otras interacciones
+  }
+
+  // 1. Botón Encoder (Menú)
   if (digitalRead(ENCODER_SW) == LOW) {
     if (millis() - lastEncoderBtnTime > 300) { 
       if (!inMenu) {
@@ -106,33 +193,34 @@ void processEncoder() {
         drawMenuScreen();
       } else {
         inMenu = false;
-        drawStaticBase();      
-        updateDynamicValues(); 
+        redrawFullDashboard();
       }
       lastEncoderBtnTime = millis();
     }
   }
 
-  // 2. Botón SELECT (DENTRO del menú: Elegir opción)
+  // 2. Botón SELECT (En el menú)
   if (inMenu && digitalRead(BTN_SELECT) == LOW) {
     if (millis() - lastSelectBtnTime > 300) {
       if (selectedOption == 0) { 
         ActivatedAlarm = !ActivatedAlarm;
         inMenu = false;
-        drawStaticBase();      
-        updateDynamicValues(); 
+        redrawFullDashboard();
       } 
       else if (selectedOption == 3) { 
         inMenu = false;
-        drawStaticBase();      
-        updateDynamicValues(); 
+        redrawFullDashboard();
       } 
       else { 
+        displayLock();
         tft.fillScreen(0x0000);
+        tft.setFont(nullptr);
         tft.setCursor(20, 120);
-        tft.setTextColor(0xFFFF);
+        tft.setTextColor(colorUI_Text);
         tft.setTextSize(2);
         tft.print("Opcion en desarrollo");
+        displayUnlock();
+
         delay(1500);
         drawMenuScreen(); 
       }
@@ -140,32 +228,32 @@ void processEncoder() {
     }
   }
 
-  // 3. Botón SELECT (FUERA del menú: INICIAR / PAUSAR el sistema)
+  // 3. Botón SELECT (Fuera del menú - Start/Stop)
   if (!inMenu && digitalRead(BTN_SELECT) == LOW) {
     if (millis() - lastSelectBtnTime > 300) {
-      systemRunning = !systemRunning; // Alternar estado
-      updateDynamicValues(); // Refrescar pantalla inmediatamente
+      systemRunning = !systemRunning; 
+      updateFastValues(); 
       lastSelectBtnTime = millis();
     }
   }
 
-  // 4. Botón MODO (Cambia de modo, detiene el sistema y reinicia el tiempo)
+  // 4. Botón MODO
   if (!inMenu && digitalRead(BTN_MODE) == LOW) {
     if (millis() - lastModeBtnTime > 300) {
-      currentModeIndex++;
-      if (currentModeIndex > 4) currentModeIndex = 0;
-      
-      systemRunning = false; // Detener actuadores al cambiar de modo por seguridad
-      currentTargetTemp = targetTemps[currentModeIndex];
-      currentTargetHum = targetHums[currentModeIndex];
-      remainingSeconds = targetTimes[currentModeIndex]; // Reiniciar el timer
-      
-      updateDynamicValues();
+      if (systemRunning) {
+        modeWarningActive = true;
+        warningSelection = 0; // Por defecto "Cancelar"
+        drawWarningOverlay();
+      } else {
+        advanceMode();
+        drawModeAndAlarm(); // Actualiza solo Modo
+        updateFastValues(); // Actualiza Metas y temporizador
+      }
       lastModeBtnTime = millis();
     }
   }
 
-  // 5. Lectura de rotación (Navegar menú)
+  // 5. Rotación de menú
   if (inMenu) {
     int currentClk = digitalRead(ENCODER_CLK);
     if (currentClk != lastClk && currentClk == LOW) {

@@ -6,3 +6,5 @@ void initDisplayTask();
 void displayTask(void *pvParameters);
 void drawStaticBase(void);
 void updateDynamicValues(void);
+void displayLock();
+void displayUnlock();
