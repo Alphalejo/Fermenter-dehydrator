@@ -28,6 +28,9 @@ extern volatile unsigned long remainingSeconds;
 extern volatile bool modeWarningActive;
 extern volatile int warningSelection; // 0 = Cancelar, 1 = Cambiar
 
+extern volatile bool inInfoScreen; // NUEVO: Estado de la pantalla de info
+void drawInfoScreen();             // NUEVO: Función para dibujar la pantalla
+
 void setupEncoder();
 void drawMenuScreen();
 void drawWarningOverlay(); // Nueva función de dibujo

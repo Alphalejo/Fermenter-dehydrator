@@ -19,9 +19,16 @@ volatile float currentTemperature = 0.0;
 volatile float currentHumidity = 0.0;
 volatile bool sensorMismatchError = false;
 
+volatile float sht1_temp = 0.0;
+volatile float sht1_hum = 0.0;
+volatile float sht2_temp = 0.0;
+volatile float sht2_hum = 0.0;
+
 // New shared variables for dehydrator airflow (Add these to sensors.h as well using 'extern')
 volatile float humidityEntrance = 0.0;
 volatile float humidityOutput = 0.0;
+volatile float tempEntrance = 0.0;
+volatile float tempOutput = 0.0;
 
 void initSensors() {
   // 1. Initialize Main I2C Bus (SDA=21, SCL=22)
@@ -63,6 +70,11 @@ void sensorTask(void *pvParameters) {
     float t2 = sht2.readTemperature();
     float h2 = sht2.readHumidity();
 
+    sht1_temp = t1;
+    sht1_hum = h1;
+    sht2_temp = t2;
+    sht2_hum = h2;
+
     if (isnan(t1) || isnan(t2) || isnan(h1) || isnan(h2)) {
       sensorMismatchError = true;
       Serial.println("ALERT: SHT31 sensor read failure (NaN).");
@@ -89,7 +101,10 @@ void sensorTask(void *pvParameters) {
     
     // Update global variables
     humidityEntrance = humidity_in_event.relative_humidity;
+    tempEntrance = temp_in_event.temperature;
+    
     humidityOutput = humidity_out_event.relative_humidity;
+    tempOutput = temp_out_event.temperature;
     
     // Debugging print
     // Serial.printf("Hum IN: %.1f%% | Hum OUT: %.1f%%\n", humidityEntrance, humidityOutput);

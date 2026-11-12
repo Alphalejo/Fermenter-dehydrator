@@ -155,6 +155,14 @@ void drawStaticBase(void) {
     invalidateAllFields();
     resetTextState();
 
+    tft.fillRect(0, 225, 320, 15, 0x2124); // Fondo gris
+    tft.setFont(nullptr);
+    tft.setTextSize(1);
+    tft.setTextColor(colorUI_Text);
+    tft.setCursor(5, 228);   tft.print("INICIO / PAUSA");
+    tft.setCursor(150, 228); tft.print("MENU");
+    tft.setCursor(215, 228); tft.print("CAMBIAR MODO");
+
     displayUnlock();
 }
 
